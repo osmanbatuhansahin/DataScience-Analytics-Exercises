@@ -1,0 +1,412 @@
+---
+title: "Statistical Computing Final"
+author: "Osman Batuhan Şahin"
+date: "29 05 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Including Libraries
+
+```{r,  message=FALSE, warning=FALSE}
+library(dplyr)
+library(stringr)
+library(corrplot)
+library(ggplot2)
+library(caret)
+library(gridExtra)
+library(imputeTS)
+library(MASS)
+library(RVAideMemoire)
+library(car)
+
+
+options(warn=-1)
+```
+
+## 1) Data Description
+
+I found my dataset on on Kaggle. This dataset classifies patients according to their labels using biomechanical features.
+Each patient is represented in the data set by six biomechanical attributes derived from the shape and orientation of the pelvis and lumbar spine (each one is a column): 
+
+pelvic incidence
+pelvic tilt
+lumbar lordosis angle
+sacral slope
+pelvic radius
+grade of spondylolisthesis
+
+column3Cweka.csv is the file with three class labels:
+Normal, Disk Hernia, Spondylolisthesis.
+
+column2Cweka.csv is the file with two class labels:
+Normal, Abnormal.
+
+```{r}
+data2c = read.csv("C:/Users/batuh/Desktop/r/finalsc/column_2C_weka.csv")
+data3c = read.csv("C:/Users/batuh/Desktop/r/finalsc/column_3C_weka.csv")
+
+head(data2c)
+head(data3c)
+
+```
+## 2) EDA
+```{r}
+dim(data2c)
+str(data2c)
+```
+```{r}
+data2c=na_mean(data2c)
+data3c=na_mean(data3c)
+```
+
+Dataset contains 310 row and 7 column. All columns are numeric except class which is a character, i will put it as a factor.
+```{r}
+data2c$class<-as.factor(data2c$class)
+data3c$class<-as.factor(data3c$class)
+
+```
+## 3) Data Visualization
+```{r}
+barplot(table(data2c$class))
+barplot(table(data3c$class))
+
+grid.arrange(ggplot(data2c, aes(x=as.factor(class), y=pelvic_incidence)) + geom_boxplot() + xlab("class"),
+ggplot(data2c, aes(x=as.factor(class), y=pelvic_tilt.numeric)) + geom_boxplot() + xlab("class"),
+ggplot(data2c, aes(x=as.factor(class), y=lumbar_lordosis_angle)) + geom_boxplot() + xlab("class"),
+ggplot(data2c, aes(x=as.factor(class), y=sacral_slope)) + geom_boxplot() + xlab("class"),
+ggplot(data2c, aes(x=as.factor(class), y=pelvic_radius)) + geom_boxplot() + xlab("class"),
+ggplot(data2c, aes(x=as.factor(class), y=degree_spondylolisthesis)) + geom_boxplot() + xlab("class"))
+
+```
+
+Barplot shows frequency of each class.
+Boxplots shows that degree spondylolisthesis is the most important of the variables to explain the normal and abnormal of the patients.
+
+## 4) Central Limit Theorem
+
+I chose pelvic_radius column.
+We will take sample size=10, 30 & 100 samples=310
+Calculate the arithmetic mean and plot the mean of sample 310 times
+
+```{r}
+s10 <- c()
+s30 <- c()
+s100 <- c()
+n =310
+for ( i in 1:n){
+s10[i] = mean(sample(data2c$pelvic_radius,10, replace = TRUE))
+s30[i] = mean(sample(data2c$pelvic_radius,30, replace = TRUE))
+s100[i] = mean(sample(data2c$pelvic_radius,100, replace = TRUE))
+}
+par(mfrow=c(1,3))
+hist(s10, col ="lightblue",main="Sample size=10",xlab ="pelvic_radius")
+abline(v = mean(s10), col = "red")
+
+hist(s30, col ="lightgreen", main="Sample size=30",xlab ="pelvic_radius")
+abline(v = mean(s30), col = "red")
+
+hist(s100, col ="orange",main="Sample size=100",xlab ="pelvic_radius")
+abline(v = mean(s100), col = "red")
+```
+
+Sampling distribution approaches normal distribution as the sample sizes increase. Therefore, we can consider the sampling distributions as normal.
+
+## 5) Confidence Intervals
+```{r}
+model <- lm(pelvic_radius ~ 1, data2c)
+```
+```{r}
+confint(model, level=0.95)
+```
+We are 95% confident that main of pelvic_radius between 116.4324 and 119.409.
+```{r}
+confint(model, level=0.99)
+```
+We are 99% confident that main of pelvic_radius between 115.9603 and 119.8811.
+Confidence interval range grows when level grows.
+
+
+## 6) Transformation
+
+Shapiro-Wilk normality test to all columns.
+```{r}
+df = data2c[-c(7) ]
+apply(df,2,shapiro.test)
+```
+We can say all columns are not normally distributed with 0.95 confidence level.
+
+```{r warning=FALSE}
+data2c$sqrt_pelvic_tilt.numeric = sqrt(data2c$pelvic_tilt.numeric)
+
+shapiro.test(data2c$sqrt_pelvic_tilt.numeric)
+```
+p value increased for pelvic_tilt.numeric after sqrt transformation.
+Histograms before and after shows transformed data is more normally distributed.
+
+
+
+```{r}
+hist(data2c$pelvic_tilt.numeric, col ="orange",xlab ="pelvic_radius")
+hist(data2c$sqrt_pelvic_tilt.numeric, col ="orange",xlab ="pelvic_radius")
+
+```
+
+## 7)Single t-test
+
+#a) Aim
+
+Checking mean of sqrt transformed pelvic_tilt.numeric columns mean equal to 4
+
+```{r}
+data2c=na_mean(data2c)
+mean(data2c$sqrt_pelvic_tilt.numeric)
+```
+#b) Hypothesis 
+
+H0: μ = 4
+H1: μ ≠ 4
+
+α = 0.05
+
+#c) Assumption Check
+
+Is this a large sample? - Yes, because n > 30.
+Normality check - p-value = 0.09009(I did shapiro test at 6th step)
+The p-value of the test is 0.09009, which is greater than alpha = 0.05. Thus, we can not reject the null hypothesis that our data is normally distributed.
+
+
+#d) Indicate “which test you choose” “for what reason”
+
+I choose one sample t test to compare the mean of one sample.
+
+#e) Result
+```{r}
+res <- t.test(data2c$sqrt_pelvic_tilt.numeric, mu = 4)
+res
+```
+Since p value is not less than our significance level of 0.05, we can not reject the null hypothesis that mean is 4.
+
+
+#f) Conclusion
+
+With 95% confidence, mean of our sample could be equal to 4.
+
+#g) What can be Type-1 and Type-2 error here?
+
+If H0 is 4 and we reject it -> Type 1 error.
+If H0 is not 4 and we do not reject it -> Type 2 error.
+
+## 8)Paired t-test
+I create a new dataset for this chapter. I can not do this test with my data.
+It is about jumping height before and after training.
+```{r}
+datajump <- data.frame(jumping = c(65 ,65, 58, 58, 72, 74, 71, 65, 52, 77,
+                             64, 75, 79, 60, 70, 68, 75, 70, 76, 69,
+                             64, 68, 68, 70, 72, 73, 71, 65, 60, 73,
+                             77, 80, 73, 71, 70, 67, 74, 63, 72, 75),
+                   group = c(rep('before', 20), rep('after', 20)))
+
+diff <- with(datajump, jumping[group == "after"] - jumping[group == "before"])
+head(datajump)
+tail(datajump)
+```
+
+
+#a) Aim
+
+Checking mean of before and after training jumping height is equal.
+
+#b) Hypothesis 
+
+H0:m=0
+H1:m≠0
+
+m = difference of means.
+
+α = 0.05
+
+#c) Assumption Check
+
+Are the two samples paired? - Yes
+Assumption 2: Is this a large sample? - No, because n < 30.
+Normality
+```{r}
+shapiro.test(diff)
+```
+The p-value of the test is 0.1135, which is greater than alpha = 0.05. Thus, we can not reject the null hypothesis that our data is normally distributed.
+
+
+#d) Result
+```{r}
+t.test(jumping ~ group, data = datajump, paired = TRUE)
+```
+Since our p-value is not less than our significance level of 0.05 we can not reject the null hypothesis that the two groups have statistically significant means. 
+
+#e) Conclusion
+With 95% confidence, mean of jumping before training and after training could be same.
+
+## 9)Fisher’s exact test for count data
+#a) Aim
+Checking women and men variables are independent or not.
+I have 210 abnormal and 100 normal data in my dataframe.
+I randomly part them into women and men.
+
+```{r}
+dat <- data.frame(
+  "Abnormal" = c(100, 110),
+  "Normal" = c(30, 70),
+  row.names = c("Women", "Men"),
+  stringsAsFactors = FALSE
+)
+colnames(dat) <- c("Abnormal", "Normal")
+
+dat
+```
+
+
+
+#b) Hypothesis and level of significance:
+H0: The two categorical variables are independent.
+H1: The two categorical variables are dependent.
+
+α = 0.05
+
+#c) Result
+
+```{r}
+fisher.test(dat)
+```
+Since our p-value is less than our significance level of 0.05 we can reject the null hypothesis that the two groups are independent.
+
+#d) Conclusion
+With 95% confidence, men and women are not independent on each other from being normal or abnormal.
+
+#e) Odds Ratio
+We can understand women are more likely to be abnormal from odds ratio.
+
+## 10)ANOVA and Tukey Test
+#a) Aim
+Checking pelvic_incidence column means of Hernia, Normal and Spondylolisthesis classes.
+I will use second dataset that has 3 factors on class column.
+
+#b) Hypo
+H0: μ1 = μ2 = μ3
+H1: All means are not equal.
+
+α = 0.01
+
+
+#c) Assumption Check
+The observations are obtained independently and randomly from the population defined by the factor levels. - Yes.
+The data of each factor level are normally distributed. - Yes, shapiro test below shows p values. They are greater than confidence level 0.01.
+
+```{r}
+data3c$sqrt_pelvic_incidence = sqrt(data3c$pelvic_incidence)
+
+```
+sqrt transformation for normality.
+```{r}
+byf.shapiro(sqrt_pelvic_incidence~class,data=data3c)
+```
+These normal populations have a common variance. Yes, levene test below show p value is greater than confidence level.
+
+```{r}
+leveneTest(sqrt_pelvic_incidence ~ class, data = data3c)
+```
+#d) Result of ANOVA
+
+```{r}
+res.aov <- aov(sqrt_pelvic_incidence ~ class, data = data3c)
+summary(res.aov)
+
+```
+As the p-value is less than the significance level 0.01, we can reject null hypothesis that means are equal.
+
+#e) Conclusion of ANOVA
+With 99% confidence, pelvic_incidence column means of Hernia, Normal and Spondylolisthesis classes are not equal.
+
+#f) Result of TUKEY
+```{r}
+TukeyHSD(res.aov, conf.level = 0.99)
+```
+As the p-value is less than the significance level 0.01, we can reject null hypothesis that means are equal.
+f) Conclusion of TUKEY
+With 99% confidence, pelvic_incidence column mean of Spondylolisthesis is different than means of Hernia and Normal.
+
+## 11) Multiple Linear Regression
+
+#a) Aim
+
+I want to build a model for degree_spondylolisthesis based on best columns.
+
+#b) Regression Equation
+
+pelvic_incidence = b0 + b1 * x + b2 * y
+
+#c) Hypothesis and level of significance
+
+H0: b1 = b2 = 0
+H1: At least one of the coefficients ≠ 0
+
+α = 0.05
+
+#d) Find the Best Model
+
+```{r}
+summary(lm1 <- lm(degree_spondylolisthesis  ~ pelvic_incidence+pelvic_tilt.numeric+lumbar_lordosis_angle+sacral_slope
+                  +pelvic_radius, data = data2c))
+```
+```{r warning=FALSE}
+slm1 <- step(lm1)
+summary(slm1)
+```
+
+degree_spondylolisthesis = b0 + b1 * pelvic_incidence + b2 * lumbar_lordosis_angle + b3 * pelvic_radius is best model. P value shows that.
+```{r}
+model <- lm(degree_spondylolisthesis ~ pelvic_incidence + lumbar_lordosis_angle+pelvic_radius, data = data2c)
+
+```
+
+#e) Assumption Check
+
+Linearity of the data. Plot below shows relationship between the predictors and the outcome is linear.
+```{r}
+plot(model, 1)
+```
+
+Normality of residuals. Plot below shows residual errors are normally distributed.
+```{r}
+plot(model, 2)
+```
+
+Homogeneity of variance. Plot below shows variance is homogen.
+```{r}
+plot(model, 3)
+```
+
+Residuals vs Leverage. There are some outliers.
+```{r}
+plot(model, 5)
+```
+
+#f) Result
+```{r}
+summary(model)
+```
+43% of the variance in the measure of degree_spondylolisthesis  can be predicted by pelvic_incidence, lumbar_lordosis_angle  and pelvic_radius.
+Our model equation can be written as follow: degree_spondylolisthesis  = -105.7148 + 1.2571 * pelvic_incidence + 0.2633 * lumbar_lordosis_angle + 0.3586 * pelvic_radius.
+
+#g) Conclusion:
+
+With pelvic_incidence, lumbar_lordosis_angle and pelvic_radius columns, we can predict degree_spondylolisthesis with 43% accuracy.
+
+#h) Prediction
+```{r}
+predict(model,newdata = data.frame(pelvic_incidence =c(60),lumbar_lordosis_angle =c(40),pelvic_radius =c(100)))
+```
+
+
